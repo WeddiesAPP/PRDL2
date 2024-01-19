@@ -884,36 +884,36 @@ val_dataloader_2D_cross = DataLoader(test_dataset_2D, batch_size=6, shuffle=True
 # =============================================================================
 
 param_grid_clstm = {
-    'num_filters': [1, 2, 4],
-    'kernel_size': [1, 3, 5],
-    'hidden_size': [64, 128, 256, 512]
+    'num_filters': [1],
+    'kernel_size': [1],
+    'hidden_size': [256]
     }
 param_grid_rnn = {
-    'hidden_size': [64, 128, 256, 512]
+    'hidden_size': [64]
     }
 
-train_losses_clstm, val_losses_clstm, train_accuracies_clstm, val_accuracies_clstm = grid_search(
+train_losses_clstm_cross, val_losses_clstm_cross, train_accuracies_clstm_cross, val_accuracies_clstm_cross = grid_search(
     model='CLSTM',
     train_dataloader=train_dataloader_2D_cross,
     val_dataloader=val_dataloader_2D_cross,
     param_grid=param_grid_clstm,
-    learning_rates=[0.001, 0.0001]
+    learning_rates=[0.001]
     )
 
-train_losses_crnn, val_losses_crnn, train_accuracies_crnn, val_accuracies_crnn = grid_search(
+train_losses_crnn_cross, val_losses_crnn_cross, train_accuracies_crnn_cross, val_accuracies_crnn_cross = grid_search(
     model='CRNN',
     train_dataloader=train_dataloader_2D_cross,
     val_dataloader=val_dataloader_2D_cross,
     param_grid=param_grid_clstm,
-    learning_rates=[0.001, 0.0001]
+    learning_rates=[0.001]
     )
 
-train_losses_rnn, val_losses_rnn, train_accuracies_rnn, val_accuracies_rnn = grid_search(
+train_losses_rnn_cross, val_losses_rnn_cross, train_accuracies_rnn_cross, val_accuracies_rnn_cross = grid_search(
     model='RNN',
     train_dataloader=train_dataloader_cross,
     val_dataloader=val_dataloader_cross,
     param_grid=param_grid_rnn,
-    learning_rates=[0.001, 0.0001]
+    learning_rates=[0.001]
     )
 
 '''
@@ -936,8 +936,10 @@ At epoch:  10
 '''
 
 '''
+============================================================================================================================================================
 Training models on the intra data and testing on this data
 Reporting the best results on that data
+============================================================================================================================================================
 '''
 
 # =============================================================================
@@ -961,7 +963,7 @@ test_dataset = MEGMeshDataset(X_test, y_test)
 
 # Create a dataloader in order for creating batches and shuffling
 train_dataloader_intra = DataLoader(train_dataset, batch_size=8, shuffle=True)
-val_dataloader_intra = DataLoader(test_dataset, batch_size=8, shuffle=True)
+val_dataloader_intra = DataLoader(test_dataset, batch_size=6, shuffle=True)
 
 # =============================================================================
 # Preprocessing 2D data
@@ -983,8 +985,8 @@ train_dataset_2D = MEGMeshDataset(X_train_2D, y_train)
 test_dataset_2D = MEGMeshDataset(X_test_2D, y_test)
 
 # Create a dataloader in order for creating batches and shuffling
-train_dataloader_2D_intra = DataLoader(train_dataset_2D, batch_size=8, shuffle=True)
-val_dataloader_2D_intra = DataLoader(test_dataset_2D, batch_size=8, shuffle=True)
+train_dataloader_2D_intra = DataLoader(train_dataset_2D, batch_size=4, shuffle=True)
+val_dataloader_2D_intra = DataLoader(test_dataset_2D, batch_size=2, shuffle=True)
 
 # =============================================================================
 # Grid Search
@@ -995,16 +997,11 @@ param_grid_clstm = {
     'kernel_size': [3],
     'hidden_size': [128]
     }
-param_grid_crnn = {
-    'num_filters': [1],
-    'kernel_size': [3],
+param_grid_rnn = {
     'hidden_size': [128]
     }
-param_grid_rnn = {
-    'hidden_size': [64, 128, 256, 512]
-    }
 
-train_losses_clstm, val_losses_clstm, train_accuracies_clstm, val_accuracies_clstm = grid_search(
+train_losses_clstm_intra, val_losses_clstm_intra, train_accuracies_clstm_intra, val_accuracies_clstm_intra = grid_search(
     model='CLSTM',
     train_dataloader=train_dataloader_2D_intra,
     val_dataloader=val_dataloader_2D_intra,
@@ -1012,22 +1009,40 @@ train_losses_clstm, val_losses_clstm, train_accuracies_clstm, val_accuracies_cls
     learning_rates=[0.001]
     )
 
-train_losses_crnn, val_losses_crnn, train_accuracies_crnn, val_accuracies_crnn = grid_search(
+train_losses_crnn_intra, val_losses_crnn_intra, train_accuracies_crnn_intra, val_accuracies_crnn_intra = grid_search(
     model='CRNN',
     train_dataloader=train_dataloader_2D_intra,
     val_dataloader=val_dataloader_2D_intra,
-    param_grid=param_grid_crnn,
+    param_grid=param_grid_clstm,
     learning_rates=[0.001]
     )
 
-train_losses_rnn, val_losses_rnn, train_accuracies_rnn, val_accuracies_rnn = grid_search(
+train_losses_rnn_intra, val_losses_rnn_intra, train_accuracies_rnn_intra, val_accuracies_rnn_intra = grid_search(
     model='RNN',
     train_dataloader=train_dataloader_intra,
     val_dataloader=val_dataloader_intra,
     param_grid=param_grid_rnn,
-    learning_rates=[0.001, 0.0001]
+    learning_rates=[0.001]
     )
 
+'''
+============CLSTM====================
+The ultimate model has an accuracy of:  1.0
+Using the following parameters:  {'num_filters': 1, 'kernel_size': 3, 'hidden_size': 128}
+And the following learning rate:  0.001
+At epoch:  1
+============CRNN=====================
+The ultimate model has an accuracy of:  1.0
+Using the following parameters:  {'num_filters': 1, 'kernel_size': 3, 'hidden_size': 128}
+And the following learning rate:  0.001
+At epoch:  3
+=============RNN=====================
+The ultimate model has an accuracy of:  1.0
+Using the following parameters:  {'hidden_size': 128}
+And the following learning rate:  0.001
+At epoch:  1
+=====================================
+'''
 
 
 
