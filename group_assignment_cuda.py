@@ -10,6 +10,7 @@ import os
 import numpy as np
 from tqdm import tqdm
 from sklearn.metrics import accuracy_score
+import itertools
 
 # function that removes final _ separated substring from string
 def get_dataset_name(file_name_with_dir):
@@ -495,6 +496,151 @@ def accuracy_epoch(network: torch.nn.Module,
     
     return accuracy
 
+def generate_combinations(param_dict):
+    param_names = list(param_dict.keys())
+    param_values = list(param_dict.values())
+
+    # Generate all possible combinations of parameter values
+    param_combinations = list(itertools.product(*param_values))
+
+    # Create dictionaries for each combination
+    result_dicts = []
+    for combo in param_combinations:
+        result_dict = dict(zip(param_names, combo))
+        result_dicts.append(result_dict)
+
+    return result_dicts
+
+def plot_graphs(
+        train_losses: list,
+        val_losses: list,
+        train_accuracies: list,
+        val_accuracies: list
+        ):
+    # plots!
+    fig, axs = plt.subplots(1, 2, figsize=(12,4))
+
+    # Your loss plotting here: x-axis for epochs and y-axis for train and validation losses
+
+    axs[0].plot(train_losses, 'r-', label='Train Loss')
+    axs[0].plot(val_losses, 'b-', label='Validation Loss')
+    axs[0].set_xlabel('Epochs')
+    axs[0].set_ylabel('Loss')
+    axs[0].set_title('Losses')
+    axs[0].set_ylim(0, 1.5)
+    axs[0].legend()
+
+    # Your accuracy plotting here: x-axis for epochs and y-axis for train and validation accuracies
+
+    axs[1].plot(train_accuracies, 'g-', label='Train Accuracy')
+    axs[1].plot(val_accuracies, 'y-', label='Validation Accuracy')
+    axs[1].set_xlabel('Epochs')
+    axs[1].set_ylabel('Accuracy')
+    axs[1].set_title('Accuracies')
+    axs[1].set_ylim(0.25, 1)
+    axs[1].legend()
+    return
+
+
+def train_model(
+        model: str,
+        train_dataloader: DataLoader,
+        val_dataloader: DataLoader,
+        parameters: dict,
+        learning_rate: float,
+        epochs: int=30,
+        report: bool=False
+        ):
+    # Set seed
+    torch.manual_seed(0)
+
+    # Create model
+    if model == 'CLSTM':
+        model = CLSTM(**parameters).cuda()
+    elif model == 'RNN':
+        model = RNN(**parameters).cuda()
+    elif model == 'CRNN':
+        model = CRNN(**parameters).cuda()
+        
+    # Define loss function and optimizer
+    loss_fn = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+    # Train model
+    train_losses = []
+    val_losses = []
+    train_accuracies = []
+    val_accuracies = []
+
+    for t in range(epochs):
+        train_loss = train_epoch(network=model, dataloader=train_dataloader, loss_fn=loss_fn, optimizer=optimizer)
+        val_loss = eval_epoch(network=model, dataloader=val_dataloader, loss_fn=loss_fn)
+        train_accuracy = accuracy_epoch(network=model, dataloader=train_dataloader)
+        val_accuracy = accuracy_epoch(network=model, dataloader=val_dataloader)
+
+        if report:
+            print("Epoch {}".format(t))
+            print(" Training Loss: {}".format(train_loss))
+            print(" Validation Loss: {}".format(val_loss))
+            print(" Training Accuracy: {}".format(train_accuracy))
+            print(" Validation Accuracy: {}".format(val_accuracy))
+
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+        train_accuracies.append(train_accuracy)
+        val_accuracies.append(val_accuracy)
+    
+    max_index, max_accuracy = max(enumerate(val_accuracies), key=lambda x: x[1])
+    print("Highest accuracy: ",max_accuracy, " at epoch: ", max_index+1)
+    return train_losses, val_losses, train_accuracies, val_accuracies, max_index, max_accuracy, model
+    
+
+def grid_search(
+        model: str,
+        train_dataloader: DataLoader,
+        val_dataloader: DataLoader,
+        param_grid: dict,
+        learning_rates: list,
+        ):
+    # Generate all possible combinations from the parameter grid
+    param_combinations = generate_combinations(param_grid)
+    
+    number_of_combos = len(param_combinations)
+    number_of_lr = len(learning_rates)
+    number_of_models = number_of_combos * number_of_lr
+    
+    print(f"Trying {number_of_models} different models")
+    
+    best_accuracy = 0
+    
+    # for each param_grid and learning rate train the model and evaluate
+    for learning_rate in learning_rates:
+        for parameters in param_combinations:
+            train_losses, val_losses, train_accuracies, val_accuracies, max_index, current_accuracy, model = train_model(
+                model,
+                train_dataloader,
+                val_dataloader,
+                parameters,
+                learning_rate
+                )
+            # if best accuracy is beaten set new best accuracy and save parameters
+            if current_accuracy > best_accuracy:
+                best_accuracy = current_accuracy
+                best_parameters = parameters
+                best_epoch = max_index+1
+                best_learning_rate = learning_rate
+                best_model = model
+    
+    # Report results
+    print("=====================================")
+    print("The ultimate model has an accuracy of: ", best_accuracy)
+    print("Using the following parameters: ", best_parameters)
+    print("And the following learning rate: ", best_learning_rate)
+    print("At epoch: ", best_epoch)
+    print("=====================================")
+    
+    return train_losses, val_losses, train_accuracies, val_accuracies, best_model
+
 # Class for creating a 2d mesh dataset 
 class MEGMeshDataset(Dataset):
     def __init__(self, data, labels):
@@ -511,31 +657,30 @@ class MEGMeshDataset(Dataset):
 class CLSTM(nn.Module):
     def __init__(
             self,
-            num_filters_1=1,
-            kernel_size_1=3,
-            hidden_size_1=128,
+            num_filters=1,
+            kernel_size=1,
+            hidden_size=256,
             num_classes=4,
             num_rows=20,
             num_columns=21,
-            dropout_rate=0.0
+            dropout_rate=0.50
             ):
         super(CLSTM, self).__init__()
-        # First convolutional layer
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=num_filters_1, kernel_size=kernel_size_1, stride=1, padding=0)
-        self.relu1 = nn.ReLU()
-        #self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+        # Convolutional layer
+        self.conv = nn.Conv2d(in_channels=1, out_channels=num_filters, kernel_size=kernel_size, stride=1, padding=0)
+        self.relu = nn.ReLU()
         self.dropout1 = nn.Dropout(p=dropout_rate)
         
         # Calculate the number of features after the second convolutional layer
         num_features_after_conv = self._calculate_conv_features(1, num_rows, num_columns)
         
         # LSTM layer
-        self.lstm1 = nn.LSTM(input_size=num_features_after_conv, hidden_size=hidden_size_1, batch_first=True)
-        self.dropout3 = nn.Dropout(p=dropout_rate)
+        self.lstm = nn.LSTM(input_size=num_features_after_conv, hidden_size=hidden_size, batch_first=True)
+        self.dropout2 = nn.Dropout(p=dropout_rate)
         
         # Fully connected layer
-        self.linear2 = nn.Linear(in_features=hidden_size_1, out_features=num_classes)
-        self.dropout5 = nn.Dropout(p=dropout_rate)
+        self.linear = nn.Linear(in_features=hidden_size, out_features=num_classes)
+        self.dropout3 = nn.Dropout(p=dropout_rate)
         
         # Softmax activation
         self.softmax = nn.Softmax(dim=1)
@@ -545,8 +690,7 @@ class CLSTM(nn.Module):
         dummy_input = torch.randn(1, input_channels, height, width)
 
         # Pass the input through the first two convolutional layers
-        #dummy_output = self.pool1(self.conv2(self.conv1(dummy_input)))
-        dummy_output = self.conv1(dummy_input)
+        dummy_output = self.conv(dummy_input)
         
         print(dummy_output.shape)
 
@@ -565,26 +709,105 @@ class CLSTM(nn.Module):
 
         # Feed giant batch through all the convolutional layers
         # Conv layer 1
-        X = self.conv1(X)
-        X = self.relu1(X) # ReLU activate
+        X = self.conv(X)
+        X = self.relu(X) # ReLU activate
         X = self.dropout1(X)
 
         # Restore the batch and sequence distinction and reshape to (batch_size, sequence_length, input_size) shape
         X = X.view(batch_size, sequence_length, -1) # Reshape for the fully connected layer
         
         # Feed through the LSTM
-        X, _ = self.lstm1(X)
-        X = self.dropout3(X)
+        X, _ = self.lstm(X)
+        X = self.dropout2(X)
 
         # Second fully connected layer
-        X = self.linear2(X)
-        Y = self.dropout5(X)
+        X = self.linear(X)
+        Y = self.dropout3(X)
+        
+        # Return classification at final timestep
+        return Y[:,-1,:]
+    
+# Convolutional RNN model
+class CRNN(nn.Module):
+    def __init__(
+            self,
+            num_filters=1,
+            kernel_size=1,
+            hidden_size=256,
+            num_classes=4,
+            num_rows=20,
+            num_columns=21,
+            dropout_rate=0.50
+            ):
+        super(CRNN, self).__init__()
+        # First convolutional layer
+        self.conv = nn.Conv2d(in_channels=1, out_channels=num_filters, kernel_size=kernel_size, stride=1, padding=0)
+        self.relu = nn.ReLU()
+        self.dropout1 = nn.Dropout(p=dropout_rate)
+        
+        # Calculate the number of features after the second convolutional layer
+        num_features_after_conv = self._calculate_conv_features(1, num_rows, num_columns)
+        
+        # LSTM layer
+        self.rnn = nn.RNN(input_size=num_features_after_conv, hidden_size=hidden_size, batch_first=True)
+        self.dropout2 = nn.Dropout(p=dropout_rate)
+        
+        # Fully connected layer
+        self.linear = nn.Linear(in_features=hidden_size, out_features=num_classes)
+        self.dropout3 = nn.Dropout(p=dropout_rate)
+        
+        # Softmax activation
+        self.softmax = nn.Softmax(dim=1)
+        
+    def _calculate_conv_features(self, input_channels, height, width):
+        # Define a dummy input with batch size 1
+        dummy_input = torch.randn(1, input_channels, height, width)
+
+        # Pass the input through the first two convolutional layers
+        dummy_output = self.conv(dummy_input)
+        
+        print(dummy_output.shape)
+
+        # Calculate the number of features after flattening
+        num_features_after_conv = dummy_output.view(dummy_output.size(0), -1).size(1)
+
+        return num_features_after_conv
+        
+    def forward(self, X):
+        # Get the dimensions of the input of shape (batch_size, sequence_length, input_streams, num_rows, num_columns)
+        batch_size, sequence_length, input_streams, num_rows, num_columns = X.shape
+        giant_batch_size = batch_size * sequence_length
+        
+        # Reshape the separate input batches into one long batch ((batch_size * sequence_length), input_streams, num_rows, num_columns) so that it can be input to the conv layers. (I_c1 := Input_convolutional_1)
+        X = X.view(giant_batch_size, input_streams, num_rows, num_columns)
+
+        # Feed giant batch through all the convolutional layers
+        # Conv layer 1
+        X = self.conv(X)
+        X = self.relu(X) # ReLU activate
+        X = self.dropout1(X)
+
+        # Restore the batch and sequence distinction and reshape to (batch_size, sequence_length, input_size) shape
+        X = X.view(batch_size, sequence_length, -1) # Reshape for the fully connected layer
+        
+        # Feed through the LSTM
+        X, _ = self.rnn(X)
+        X = self.dropout2(X)
+
+        # Second fully connected layer
+        X = self.linear(X)
+        Y = self.dropout3(X)
         
         # Return classification at final timestep
         return Y[:,-1,:]
     
 class RNN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
+    def __init__(
+            self,
+            input_size=248,
+            hidden_size=256,
+            output_size=4
+            ):
         super(RNN, self).__init__()
         # RNN layer
         self.rnn = nn.RNN(input_size, hidden_size, batch_first=True)
@@ -601,7 +824,7 @@ class RNN(nn.Module):
         return Y[:,-1,:]
 
 # =============================================================================
-# RNN model training
+# Preprocessing 1D data
 # =============================================================================
 
 # Preprocess all the files. Should result in 64 different data samples   
@@ -623,73 +846,8 @@ test_dataset = MEGMeshDataset(X_test, y_test)
 train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True)
 val_dataloader = DataLoader(test_dataset, batch_size=6, shuffle=True)
 
-# Initiate model and loss function
-
-# Set seed
-torch.manual_seed(0)
-
-# Create model
-RNN_model = RNN(
-    input_size=248,
-    hidden_size=256,
-    output_size=4
-    ).cuda()
-
-# Define loss function and optimizer
-loss_fn = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(RNN_model.parameters(), lr=0.0001)
-
-# Train model
-
-# Set number of epochs
-NUM_EPOCHS = 30
-
-train_losses = []
-val_losses = []
-train_accuracies = []
-val_accuracies = []
-
-for t in range(NUM_EPOCHS):
-    print("Epoch {}".format(t))
-    train_loss = train_epoch(network=RNN_model, dataloader=train_dataloader, loss_fn=loss_fn, optimizer=optimizer)
-    print(" Training Loss: {}".format(train_loss))
-    val_loss = eval_epoch(network=RNN_model, dataloader=val_dataloader, loss_fn=loss_fn)
-    print(" Validation Loss: {}".format(val_loss))
-    train_accuracy = accuracy_epoch(network=RNN_model, dataloader=train_dataloader)
-    print(" Training Accuracy: {}".format(train_accuracy))
-    val_accuracy = accuracy_epoch(network=RNN_model, dataloader=val_dataloader)
-    print(" Validation Accuracy: {}".format(val_accuracy))
-
-    train_losses.append(train_loss)
-    val_losses.append(val_loss)
-    train_accuracies.append(train_accuracy)
-    val_accuracies.append(val_accuracy)
-    
-# plots!
-fig, axs = plt.subplots(1, 2, figsize=(12,4))
-
-# Your loss plotting here: x-axis for epochs and y-axis for train and validation losses
-
-axs[0].plot(train_losses, 'r-', label='Train Loss')
-axs[0].plot(val_losses, 'b-', label='Validation Loss')
-axs[0].set_xlabel('Epochs')
-axs[0].set_ylabel('Loss')
-axs[0].set_title('Losses')
-axs[0].set_ylim(0, 1.5)
-axs[0].legend()
-
-# Your accuracy plotting here: x-axis for epochs and y-axis for train and validation accuracies
-
-axs[1].plot(train_accuracies, 'g-', label='Train Accuracy')
-axs[1].plot(val_accuracies, 'y-', label='Validation Accuracy')
-axs[1].set_xlabel('Epochs')
-axs[1].set_ylabel('Accuracy')
-axs[1].set_title('Accuracies')
-axs[1].set_ylim(0.25, 1)
-axs[1].legend()
-
 # =============================================================================
-# CLSTM training
+# Preprocessing 2D data
 # =============================================================================
 
 # Preprocess all the files. Should result in 64 different data samples   
@@ -711,71 +869,43 @@ test_dataset_2D = MEGMeshDataset(X_test_2D, y_test)
 train_dataloader_2D = DataLoader(train_dataset_2D, batch_size=8, shuffle=True)
 val_dataloader_2D = DataLoader(test_dataset_2D, batch_size=6, shuffle=True)
 
-# Initiate model and loss function
+# =============================================================================
+# Grid Search
+# =============================================================================
 
-# Set seed
-torch.manual_seed(0)
+param_grid_clstm = {
+    'num_filters': [1, 2, 4],
+    'kernel_size': [1, 3, 5],
+    'hidden_size': [64, 128, 256, 512]
+    }
+param_grid_rnn = {
+    'hidden_size': [64, 128, 256, 512]
+    }
 
-# Create model
-CLSTM_model = CLSTM(
-        num_filters_1=3,
-        kernel_size_1=5,
-        hidden_size_1=200,
-        num_classes=4,
-        num_rows=20,
-        num_columns=21,
-        dropout_rate=0.4
-    ).cuda()
+train_losses_clstm, val_losses_clstm, train_accuracies_clstm, val_accuracies_clstm, clstm_model = grid_search(
+    model='CLSTM',
+    train_dataloader=train_dataloader_2D,
+    val_dataloader=val_dataloader_2D,
+    param_grid=param_grid_clstm,
+    learning_rates=[0.001, 0.0001]
+    )
 
-# Define loss function and optimizer
-loss_fn = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(CLSTM_model.parameters(), lr=0.0001)
+train_losses_crnn, val_losses_crnn, train_accuracies_crnn, val_accuracies_crnn, crnn_model = grid_search(
+    model='CRNN',
+    train_dataloader=train_dataloader_2D,
+    val_dataloader=val_dataloader_2D,
+    param_grid=param_grid_clstm,
+    learning_rates=[0.001, 0.0001]
+    )
 
-# Train model
+train_losses_rnn, val_losses_rnn, train_accuracies_rnn, val_accuracies_rnn, rnn_model = grid_search(
+    model='RNN',
+    train_dataloader=train_dataloader,
+    val_dataloader=val_dataloader,
+    param_grid=param_grid_rnn,
+    learning_rates=[0.001, 0.0001]
+    )
 
-# Set number of epochs
-NUM_EPOCHS = 15
 
-train_losses_2D = []
-val_losses_2D = []
-train_accuracies_2D = []
-val_accuracies_2D = []
 
-for t in range(NUM_EPOCHS):
-    print("Epoch {}".format(t))
-    train_loss = train_epoch(network=CLSTM_model, dataloader=train_dataloader_2D, loss_fn=loss_fn, optimizer=optimizer)
-    print(" Training Loss: {}".format(train_loss))
-    val_loss = eval_epoch(network=CLSTM_model, dataloader=val_dataloader_2D, loss_fn=loss_fn)
-    print(" Validation Loss: {}".format(val_loss))
-    train_accuracy = accuracy_epoch(network=CLSTM_model, dataloader=train_dataloader_2D)
-    print(" Training Accuracy: {}".format(train_accuracy))
-    val_accuracy = accuracy_epoch(network=CLSTM_model, dataloader=val_dataloader_2D)
-    print(" Validation Accuracy: {}".format(val_accuracy))
 
-    train_losses_2D.append(train_loss)
-    val_losses_2D.append(val_loss)
-    train_accuracies_2D.append(train_accuracy)
-    val_accuracies_2D.append(val_accuracy)
-    
-# plots!
-fig, axs = plt.subplots(1, 2, figsize=(12,4))
-
-# Your loss plotting here: x-axis for epochs and y-axis for train and validation losses
-
-axs[0].plot(train_losses_2D, 'r-', label='Train Loss')
-axs[0].plot(val_losses_2D, 'b-', label='Validation Loss')
-axs[0].set_xlabel('Epochs')
-axs[0].set_ylabel('Loss')
-axs[0].set_title('Losses')
-axs[0].set_ylim(0, 1.5)
-axs[0].legend()
-
-# Your accuracy plotting here: x-axis for epochs and y-axis for train and validation accuracies
-
-axs[1].plot(train_accuracies_2D, 'g-', label='Train Accuracy')
-axs[1].plot(val_accuracies_2D, 'y-', label='Validation Accuracy')
-axs[1].set_xlabel('Epochs')
-axs[1].set_ylabel('Accuracy')
-axs[1].set_title('Accuracies')
-axs[1].set_ylim(0.25, 1)
-axs[1].legend()
