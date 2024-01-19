@@ -433,11 +433,11 @@ def train_epoch(
 
 # evaluate batch with test data
 def eval_batch(
-    network: torch.nn.Module,
-    X_batch: FloatTensor,
-    y_batch: LongTensor,
-    loss_fn: Callable[[FloatTensor, LongTensor], FloatTensor]
-    ) -> float: # batch loss
+        network: torch.nn.Module,
+        X_batch: FloatTensor,
+        y_batch: LongTensor,
+        loss_fn: Callable[[FloatTensor, LongTensor], FloatTensor]
+        ) -> float: # batch loss
     # set model to evaluation mode
     network.eval()
     # no need to track gradients
@@ -450,10 +450,10 @@ def eval_batch(
 
 # evaluate epoch with test data
 def eval_epoch(
-    network: torch.nn.Module,
-    dataloader: DataLoader,
-    loss_fn: Callable[[FloatTensor, LongTensor], FloatTensor]
-) -> float: #epoch's loss
+        network: torch.nn.Module,
+        dataloader: DataLoader,
+        loss_fn: Callable[[FloatTensor, LongTensor], FloatTensor]
+        ) -> float: #epoch's loss
     # Set the initial loss value.
     loss = 0.
     # Iterate over the batches in the dataloader
@@ -466,9 +466,11 @@ def eval_epoch(
     return loss
 
 # computes accuracy of one batch
-def accuracy_batch(network: torch.nn.Module,
-                   X_batch: FloatTensor,
-                   y_batch: LongTensor) -> float:
+def accuracy_batch(
+        network: torch.nn.Module,
+        X_batch: FloatTensor,
+        y_batch: LongTensor
+        ) -> float:
     # Set model to evaluation mode
     network.eval()
     # dont track gradients
@@ -483,8 +485,10 @@ def accuracy_batch(network: torch.nn.Module,
     return accuracy_batch
      
 # Compute accuracy over all batches
-def accuracy_epoch(network: torch.nn.Module,
-                   dataloader: DataLoader) -> float:
+def accuracy_epoch(
+        network: torch.nn.Module,
+        dataloader: DataLoader
+        ) -> (float, float, float, float):
     # Set initial accuracy to 0
     accuracy = 0
     # calculate accuracy of all batches
@@ -541,13 +545,12 @@ def plot_graphs(
     axs[1].legend()
     return
 
-
 def train_model(
         model: str,
         train_dataloader: DataLoader,
         val_dataloader: DataLoader,
         parameters: dict,
-        learning_rate: float,
+        learning_rate: float=0.001,
         epochs: int=30,
         report: bool=False
         ):
@@ -605,6 +608,8 @@ def grid_search(
     # Generate all possible combinations from the parameter grid
     param_combinations = generate_combinations(param_grid)
     
+    print(param_combinations)
+    
     number_of_combos = len(param_combinations)
     number_of_lr = len(learning_rates)
     number_of_models = number_of_combos * number_of_lr
@@ -629,7 +634,6 @@ def grid_search(
                 best_parameters = parameters
                 best_epoch = max_index+1
                 best_learning_rate = learning_rate
-                best_model = model
     
     # Report results
     print("=====================================")
@@ -639,7 +643,7 @@ def grid_search(
     print("At epoch: ", best_epoch)
     print("=====================================")
     
-    return train_losses, val_losses, train_accuracies, val_accuracies, best_model
+    return train_losses, val_losses, train_accuracies, val_accuracies
 
 # Class for creating a 2d mesh dataset 
 class MEGMeshDataset(Dataset):
@@ -822,7 +826,13 @@ class RNN(nn.Module):
         
         # return classificiation at final timestep
         return Y[:,-1,:]
+    
 
+'''
+Training and testing models on the Cross participant training and testing set
+Reporting results and saving training data for plotting
+Training final models on the reported hyperparameters
+'''
 # =============================================================================
 # Preprocessing 1D data
 # =============================================================================
@@ -843,8 +853,8 @@ train_dataset = MEGMeshDataset(X_train, y_train)
 test_dataset = MEGMeshDataset(X_test, y_test)
 
 # Create a dataloader in order for creating batches and shuffling
-train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True)
-val_dataloader = DataLoader(test_dataset, batch_size=6, shuffle=True)
+train_dataloader_cross = DataLoader(train_dataset, batch_size=8, shuffle=True)
+val_dataloader_cross = DataLoader(test_dataset, batch_size=6, shuffle=True)
 
 # =============================================================================
 # Preprocessing 2D data
@@ -866,8 +876,8 @@ train_dataset_2D = MEGMeshDataset(X_train_2D, y_train)
 test_dataset_2D = MEGMeshDataset(X_test_2D, y_test)
 
 # Create a dataloader in order for creating batches and shuffling
-train_dataloader_2D = DataLoader(train_dataset_2D, batch_size=8, shuffle=True)
-val_dataloader_2D = DataLoader(test_dataset_2D, batch_size=6, shuffle=True)
+train_dataloader_2D_cross = DataLoader(train_dataset_2D, batch_size=8, shuffle=True)
+val_dataloader_2D_cross = DataLoader(test_dataset_2D, batch_size=6, shuffle=True)
 
 # =============================================================================
 # Grid Search
@@ -882,26 +892,138 @@ param_grid_rnn = {
     'hidden_size': [64, 128, 256, 512]
     }
 
-train_losses_clstm, val_losses_clstm, train_accuracies_clstm, val_accuracies_clstm, clstm_model = grid_search(
+train_losses_clstm, val_losses_clstm, train_accuracies_clstm, val_accuracies_clstm = grid_search(
     model='CLSTM',
-    train_dataloader=train_dataloader_2D,
-    val_dataloader=val_dataloader_2D,
+    train_dataloader=train_dataloader_2D_cross,
+    val_dataloader=val_dataloader_2D_cross,
     param_grid=param_grid_clstm,
     learning_rates=[0.001, 0.0001]
     )
 
-train_losses_crnn, val_losses_crnn, train_accuracies_crnn, val_accuracies_crnn, crnn_model = grid_search(
+train_losses_crnn, val_losses_crnn, train_accuracies_crnn, val_accuracies_crnn = grid_search(
     model='CRNN',
-    train_dataloader=train_dataloader_2D,
-    val_dataloader=val_dataloader_2D,
+    train_dataloader=train_dataloader_2D_cross,
+    val_dataloader=val_dataloader_2D_cross,
     param_grid=param_grid_clstm,
     learning_rates=[0.001, 0.0001]
     )
 
-train_losses_rnn, val_losses_rnn, train_accuracies_rnn, val_accuracies_rnn, rnn_model = grid_search(
+train_losses_rnn, val_losses_rnn, train_accuracies_rnn, val_accuracies_rnn = grid_search(
     model='RNN',
-    train_dataloader=train_dataloader,
-    val_dataloader=val_dataloader,
+    train_dataloader=train_dataloader_cross,
+    val_dataloader=val_dataloader_cross,
+    param_grid=param_grid_rnn,
+    learning_rates=[0.001, 0.0001]
+    )
+
+'''
+============CLSTM====================
+The ultimate model has an accuracy of:  0.8541666666666665
+Using the following parameters:  {'num_filters': 1, 'kernel_size': 1, 'hidden_size': 256}
+And the following learning rate:  0.001
+At epoch:  14
+============CRNN=====================
+The ultimate model has an accuracy of:  0.8541666666666666
+Using the following parameters:  {'num_filters': 1, 'kernel_size': 1, 'hidden_size': 256}
+And the following learning rate:  0.001
+At epoch:  18
+=============RNN=====================
+The ultimate model has an accuracy of:  0.7291666666666667
+Using the following parameters:  {'hidden_size': 64}
+And the following learning rate:  0.001
+At epoch:  10
+=====================================
+'''
+
+'''
+Training models on the intra data and testing on this data
+Reporting the best results on that data
+'''
+
+# =============================================================================
+# Preprocessing 1D data
+# =============================================================================
+
+# Preprocess all the files. Should result in 64 different data samples   
+X_train, y_train = preprocess_files(path='Final Project data/Intra/train', mesh=False)
+X_test, y_test = preprocess_files(path='Final Project data/Intra/test', mesh=False)
+
+# Move data to GPU
+X_train = X_train.cuda()
+y_train = y_train.cuda()
+
+X_test = X_test.cuda()
+y_test = y_test.cuda()
+
+# Create a custom dataset for the dataloader
+train_dataset = MEGMeshDataset(X_train, y_train)
+test_dataset = MEGMeshDataset(X_test, y_test)
+
+# Create a dataloader in order for creating batches and shuffling
+train_dataloader_intra = DataLoader(train_dataset, batch_size=8, shuffle=True)
+val_dataloader_intra = DataLoader(test_dataset, batch_size=8, shuffle=True)
+
+# =============================================================================
+# Preprocessing 2D data
+# =============================================================================
+
+# Preprocess all the files. Should result in 64 different data samples   
+X_train_2D, y_train = preprocess_files(path='Final Project data/Intra/train')
+X_test_2D, y_test = preprocess_files(path='Final Project data/Intra/test')
+
+# Move data to GPU
+X_train_2D = X_train_2D.cuda()
+y_train = y_train.cuda()
+
+X_test_2D = X_test_2D.cuda()
+y_test = y_test.cuda()
+
+# Create a custom dataset for the dataloader
+train_dataset_2D = MEGMeshDataset(X_train_2D, y_train)
+test_dataset_2D = MEGMeshDataset(X_test_2D, y_test)
+
+# Create a dataloader in order for creating batches and shuffling
+train_dataloader_2D_intra = DataLoader(train_dataset_2D, batch_size=8, shuffle=True)
+val_dataloader_2D_intra = DataLoader(test_dataset_2D, batch_size=8, shuffle=True)
+
+# =============================================================================
+# Grid Search
+# =============================================================================
+
+param_grid_clstm = {
+    'num_filters': [1],
+    'kernel_size': [3],
+    'hidden_size': [128]
+    }
+param_grid_crnn = {
+    'num_filters': [1],
+    'kernel_size': [3],
+    'hidden_size': [128]
+    }
+param_grid_rnn = {
+    'hidden_size': [64, 128, 256, 512]
+    }
+
+train_losses_clstm, val_losses_clstm, train_accuracies_clstm, val_accuracies_clstm = grid_search(
+    model='CLSTM',
+    train_dataloader=train_dataloader_2D_intra,
+    val_dataloader=val_dataloader_2D_intra,
+    param_grid=param_grid_clstm,
+    learning_rates=[0.001]
+    )
+
+train_losses_crnn, val_losses_crnn, train_accuracies_crnn, val_accuracies_crnn = grid_search(
+    model='CRNN',
+    train_dataloader=train_dataloader_2D_intra,
+    val_dataloader=val_dataloader_2D_intra,
+    param_grid=param_grid_crnn,
+    learning_rates=[0.001]
+    )
+
+train_losses_rnn, val_losses_rnn, train_accuracies_rnn, val_accuracies_rnn = grid_search(
+    model='RNN',
+    train_dataloader=train_dataloader_intra,
+    val_dataloader=val_dataloader_intra,
     param_grid=param_grid_rnn,
     learning_rates=[0.001, 0.0001]
     )
