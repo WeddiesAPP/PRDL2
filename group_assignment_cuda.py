@@ -565,6 +565,8 @@ def train_model(
     elif model == 'CRNN':
         model = CRNN(**parameters).cuda()
         
+    print(parameters)
+        
     # Define loss function and optimizer
     loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -634,6 +636,10 @@ def grid_search(
                 best_parameters = parameters
                 best_epoch = max_index+1
                 best_learning_rate = learning_rate
+                best_train_losses = train_losses
+                best_val_losses = val_losses
+                best_train_accuracies = train_accuracies
+                best_val_accuracies = val_accuracies
     
     # Report results
     print("=====================================")
@@ -643,7 +649,7 @@ def grid_search(
     print("At epoch: ", best_epoch)
     print("=====================================")
     
-    return train_losses, val_losses, train_accuracies, val_accuracies
+    return best_train_losses, best_val_losses, best_train_accuracies, best_val_accuracies
 
 # Class for creating a 2d mesh dataset 
 class MEGMeshDataset(Dataset):
@@ -837,6 +843,8 @@ Training final models on the reported hyperparameters
 # Preprocessing 1D data
 # =============================================================================
 
+torch.manual_seed(0)
+
 # Preprocess all the files. Should result in 64 different data samples   
 X_train, y_train = preprocess_files(mesh=False)
 X_test, y_test = preprocess_files(path='Final Project data/Cross/test', mesh=False)
@@ -884,10 +892,19 @@ val_dataloader_2D_cross = DataLoader(test_dataset_2D, batch_size=6, shuffle=True
 # =============================================================================
 
 param_grid_clstm = {
-    'num_filters': [1],
-    'kernel_size': [1],
-    'hidden_size': [256]
+    'num_filters': [1, 2],
+    'kernel_size': [1, 3],
+    'hidden_size': [128, 256]
     }
+
+# =============================================================================
+# param_grid_clstm = {
+#     'num_filters': [1],
+#     'kernel_size': [1],
+#     'hidden_size': [128]
+#     }
+# =============================================================================
+
 param_grid_rnn = {
     'hidden_size': [64]
     }
@@ -898,6 +915,13 @@ train_losses_clstm_cross, val_losses_clstm_cross, train_accuracies_clstm_cross, 
     val_dataloader=val_dataloader_2D_cross,
     param_grid=param_grid_clstm,
     learning_rates=[0.001]
+    )
+
+plot_graphs(
+    train_losses_clstm_cross,
+    val_losses_clstm_cross,
+    train_accuracies_clstm_cross,
+    val_accuracies_clstm_cross
     )
 
 train_losses_crnn_cross, val_losses_crnn_cross, train_accuracies_crnn_cross, val_accuracies_crnn_cross = grid_search(
@@ -934,6 +958,7 @@ And the following learning rate:  0.001
 At epoch:  10
 =====================================
 '''
+
 
 '''
 ============================================================================================================================================================
